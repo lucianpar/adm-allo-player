@@ -9,11 +9,14 @@ Includes real-time dB meters for all 54 channels.
 #include <cmath>
 #include <iostream>
 #include <vector>
+#include <filesystem>
 #include "al/app/al_App.hpp"
 #include "al/io/al_File.hpp"
 #include "al/io/al_Imgui.hpp"
 #include "al/sound/al_SoundFile.hpp"
 #include "channelMapping.hpp"
+
+namespace fs = std::filesystem;
 
 using namespace al;
 
@@ -40,6 +43,92 @@ struct MyApp : App {
   std::vector<int> peakHoldCounters; // Counter for peak hold
   float meterDecayRate = 0.95f;      // How fast meters decay
   bool showMeters = true;
+  
+  // File selection
+  std::vector<std::string> audioFiles;  // List of available audio files
+  int selectedFileIndex = 0;            // Currently selected file index
+  
+  // Scan sourceAudio folder for .wav files
+  void scanAudioFiles() {
+    audioFiles.clear();
+    std::string audioDir = al::File::currentPath() + audioFolder;
+    
+    std::cout << "Scanning for audio files in: " << audioDir << std::endl;
+    
+    try {
+      for (const auto& entry : fs::directory_iterator(audioDir)) {
+        if (entry.is_regular_file()) {
+          std::string ext = entry.path().extension().string();
+          // Convert to lowercase for comparison
+          std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+          if (ext == ".wav" || ext == ".aiff" || ext == ".aif" || ext == ".flac") {
+            audioFiles.push_back(entry.path().filename().string());
+            std::cout << "  Found: " << entry.path().filename().string() << std::endl;
+          }
+        }
+      }
+      // Sort alphabetically
+      std::sort(audioFiles.begin(), audioFiles.end());
+      
+      // Find current file index
+      for (size_t i = 0; i < audioFiles.size(); i++) {
+        if (audioFiles[i] == audioFileName) {
+          selectedFileIndex = static_cast<int>(i);
+          break;
+        }
+      }
+    } catch (const std::exception& e) {
+      std::cerr << "Error scanning audio directory: " << e.what() << std::endl;
+    }
+    
+    std::cout << "Found " << audioFiles.size() << " audio files" << std::endl;
+  }
+  
+  // Load a new audio file
+  bool loadAudioFile(const std::string& filename) {
+    std::string audioPath = al::File::currentPath() + audioFolder + filename;
+    
+    std::cout << "\n=== Loading new audio file ===" << std::endl;
+    std::cout << "File: " << audioPath << std::endl;
+    
+    // Stop playback during load
+    bool wasPlaying = playing;
+    playing = false;
+    
+    if (!soundFile.open(audioPath.c_str())) {
+      std::cerr << "✗ ERROR: Could not open file: " << audioPath << std::endl;
+      return false;
+    }
+    
+    std::cout << "✓ Audio file loaded successfully" << std::endl;
+    std::cout << "  Sample rate: " << soundFile.sampleRate << " Hz" << std::endl;
+    std::cout << "  Channels: " << soundFile.channels << std::endl;
+    std::cout << "  Frame count: " << soundFile.frameCount << std::endl;
+    std::cout << "  Duration: " << (double)soundFile.frameCount / soundFile.sampleRate << " seconds" << std::endl;
+    
+    numChannels = soundFile.channels;
+    audioFileName = filename;
+    
+    if (numChannels != expectedChannels) {
+      std::cerr << "⚠ WARNING: Expected " << expectedChannels << " channels but file has " 
+                << numChannels << " channels." << std::endl;
+    }
+    
+    // Reset playback position
+    frameCounter = 0;
+    
+    // Resize buffers for new channel count
+    int framesPerBuffer = 512;
+    buffer.resize(framesPerBuffer * numChannels);
+    channelLevels.resize(numChannels, 0.0f);
+    channelPeaks.resize(numChannels, 0.0f);
+    peakHoldCounters.resize(numChannels, 0);
+    
+    // Resume playback if was playing
+    playing = wasPlaying;
+    
+    return true;
+  }
   
   void onInit() override {
     // Build audio file path using currentPath (like ShaderPlayback)
@@ -79,6 +168,9 @@ struct MyApp : App {
     channelPeaks.resize(numChannels, 0.0f);
     peakHoldCounters.resize(numChannels, 0);
     
+    // Scan for available audio files
+    scanAudioFiles();
+    
     frameCounter = 0;
   }
   
@@ -90,6 +182,38 @@ struct MyApp : App {
     imguiBeginFrame();
     
     ImGui::Begin("54-Channel Audio Player");
+    
+    // File selector dropdown
+    ImGui::Text("Audio File:");
+    if (!audioFiles.empty()) {
+      // Create combo box with available files
+      if (ImGui::BeginCombo("##fileselect", audioFileName.c_str())) {
+        for (int i = 0; i < static_cast<int>(audioFiles.size()); i++) {
+          bool isSelected = (selectedFileIndex == i);
+          if (ImGui::Selectable(audioFiles[i].c_str(), isSelected)) {
+            if (i != selectedFileIndex) {
+              selectedFileIndex = i;
+              loadAudioFile(audioFiles[i]);
+            }
+          }
+          if (isSelected) {
+            ImGui::SetItemDefaultFocus();
+          }
+        }
+        ImGui::EndCombo();
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("↻ Refresh")) {
+        scanAudioFiles();
+      }
+    } else {
+      ImGui::Text("No audio files found in sourceAudio/");
+      if (ImGui::Button("Scan for Files")) {
+        scanAudioFiles();
+      }
+    }
+    
+    ImGui::Separator();
     ImGui::Text("File Info:");
     ImGui::Text("  Channels: %d", numChannels);
     ImGui::Text("  Sample Rate: %d Hz", soundFile.sampleRate);
