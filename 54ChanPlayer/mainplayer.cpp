@@ -13,6 +13,7 @@ Includes real-time dB meters for all 54 channels.
 #include "al/io/al_File.hpp"
 #include "al/io/al_Imgui.hpp"
 #include "al/sound/al_SoundFile.hpp"
+#include "channelMapping.hpp"
 
 using namespace al;
 
@@ -260,27 +261,34 @@ struct MyApp : App {
       buffer[i] = frames[i];
     }
     
-    // Deinterleave and output to all channels
+    // Deinterleave and output to all channels WITH REMAPPING
     int outputChannels = (numChannels < io.channelsOut()) ? numChannels : io.channelsOut();
     
     // Reset channel levels for this buffer
     std::vector<float> maxLevels(numChannels, 0.0f);
     
     for (uint64_t frame = 0; frame < numFrames; frame++) {
-      for (int ch = 0; ch < outputChannels; ch++) {
-        float sample = buffer[frame * numChannels + ch] * gain;
-        io.out(ch, frame) = sample;
-        
-        // Track max level for metering
-        float absSample = fabsf(sample);
-        if (absSample > maxLevels[ch]) {
-          maxLevels[ch] = absSample;
-        }
+      // Clear all outputs first
+      for (int ch = 0; ch < io.channelsOut(); ch++) {
+        io.out(ch, frame) = 0.0f;
       }
       
-      // If we have fewer file channels than outputs, fill remaining with silence
-      for (int ch = outputChannels; ch < io.channelsOut(); ch++) {
-        io.out(ch, frame) = 0.0f;
+      // Apply channel mapping
+      for (int i = 0; i < ChannelMapping::NUM_CHANNELS && i < numChannels; i++) {
+        int fileChannel = ChannelMapping::channelMap[i].first;
+        int outputChannel = ChannelMapping::channelMap[i].second;
+        
+        // Bounds check
+        if (fileChannel < numChannels && outputChannel < io.channelsOut()) {
+          float sample = buffer[frame * numChannels + fileChannel] * gain;
+          io.out(outputChannel, frame) = sample;
+          
+          // Track max level for metering (use file channel index for display)
+          float absSample = fabsf(sample);
+          if (absSample > maxLevels[fileChannel]) {
+            maxLevels[fileChannel] = absSample;
+          }
+        }
       }
     }
     
