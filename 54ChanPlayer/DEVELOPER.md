@@ -13,8 +13,61 @@ Technical reference for future development and AI agents.
 ├── CMakeLists.txt      # CMake build config
 ├── README.md           # User documentation
 ├── DEVELOPER.md        # This file
-├── sourceAudio/        # Audio files directory
+├── sourceAudio/        # Audio files directory (.wav, .aiff, .flac)
 └── build/              # Build output (generated)
+```
+
+---
+
+## Key Features
+
+### Runtime File Selection
+
+The app scans `sourceAudio/` for audio files and provides a dropdown selector:
+
+```cpp
+// File selection members
+std::vector<std::string> audioFiles;  // Available files
+int selectedFileIndex = 0;            // Current selection
+
+// Scan for files (called on init and refresh button)
+void scanAudioFiles() {
+  audioFiles.clear();
+  std::string audioDir = al::File::currentPath() + audioFolder;
+  for (const auto& entry : fs::directory_iterator(audioDir)) {
+    std::string ext = entry.path().extension().string();
+    if (ext == ".wav" || ext == ".aiff" || ext == ".aif" || ext == ".flac") {
+      audioFiles.push_back(entry.path().filename().string());
+    }
+  }
+  std::sort(audioFiles.begin(), audioFiles.end());
+}
+
+// Load new file at runtime
+bool loadAudioFile(const std::string& filename) {
+  playing = false;  // Stop during load
+  if (!soundFile.open(audioPath.c_str())) return false;
+  frameCounter = 0;  // Reset position
+  // Resize buffers for new channel count...
+  return true;
+}
+```
+
+### ImGui Dropdown
+
+```cpp
+if (ImGui::BeginCombo("##fileselect", audioFileName.c_str())) {
+  for (int i = 0; i < audioFiles.size(); i++) {
+    bool isSelected = (selectedFileIndex == i);
+    if (ImGui::Selectable(audioFiles[i].c_str(), isSelected)) {
+      if (i != selectedFileIndex) {
+        selectedFileIndex = i;
+        loadAudioFile(audioFiles[i]);
+      }
+    }
+  }
+  ImGui::EndCombo();
+}
 ```
 
 ---
@@ -65,10 +118,13 @@ cmake -S . -B build && cmake --build build
 ### Key Headers
 
 ```cpp
+#include <filesystem>              // For directory scanning (C++17)
 #include "al/app/al_App.hpp"       // Main application class
 #include "al/io/al_File.hpp"       // File path utilities
 #include "al/io/al_Imgui.hpp"      // ImGui integration
 #include "al/sound/al_SoundFile.hpp" // Audio file loading
+
+namespace fs = std::filesystem;
 ```
 
 ### App Structure
@@ -193,9 +249,15 @@ SKIPPED:     Outputs 13-16, 47-48 (no speakers)
 | Property | Requirement |
 |----------|-------------|
 | Channels | 54 (will warn if different) |
-| Format | WAV (libsndfile supported formats) |
+| Format | WAV, AIFF, FLAC (libsndfile supported) |
 | Sample Rate | 48000 Hz recommended |
 | Bit Depth | 16/24/32-bit |
+
+### Supported Extensions
+
+- `.wav` (recommended)
+- `.aiff` / `.aif`
+- `.flac`
 
 ### Loading Audio
 

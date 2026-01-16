@@ -6,6 +6,7 @@ A multichannel audio playback system for the Allosphere, built with [allolib](ht
 
 This application plays back 54-channel audio files and maps them to the Allosphere's speaker array. It includes:
 
+- **Runtime file selection** - switch audio files from the GUI dropdown
 - Real-time dB meters for all 54 channels
 - GUI controls for playback, pause, loop, and gain
 - Channel remapping to match the Allosphere speaker layout
@@ -45,14 +46,9 @@ cmake ..
 cmake --build .
 ```
 
-### 2. Add Audio File
+### 2. Add Audio Files
 
-Place your 54-channel audio file in the `sourceAudio/` directory.
-
-Update `mainplayer.cpp` if your filename differs:
-```cpp
-std::string audioFileName = "YourFile.wav";
-```
+Place your 54-channel audio files (`.wav`, `.aiff`, `.flac`) in the `sourceAudio/` directory.
 
 ### 3. Run
 
@@ -60,15 +56,30 @@ std::string audioFileName = "YourFile.wav";
 ./mainplayer
 ```
 
+### 4. Select Audio File
+
+Use the **dropdown menu** at the top of the GUI to switch between audio files. No rebuild required!
+
+Click **↻ Refresh** to rescan the folder if you add new files while the app is running.
+
 ### GUI Controls
 
 | Control | Function |
 |---------|----------|
+| **File Dropdown** | Select audio file from sourceAudio/ |
+| **↻ Refresh** | Rescan folder for new files |
 | **Play/Pause** | Start or pause playback |
+| **Stop** | Stop and reset to beginning |
 | **Rewind** | Return to beginning |
 | **Loop** | Toggle looping |
 | **Gain** | Master volume (0.0 - 1.0) |
 | **Show Meters** | Toggle dB meter display |
+
+### Supported Audio Formats
+
+- `.wav` (recommended)
+- `.aiff` / `.aif`
+- `.flac`
 
 ---
 
