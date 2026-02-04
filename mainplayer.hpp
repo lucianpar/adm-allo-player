@@ -52,7 +52,11 @@ struct adm_player : App {
   int selectedFileIndex = 0;            // Currently selected file index
 
   //gui 
-  bool displayGUI = true;
+  bool displayGUI;
+
+  void toggleGUI(bool toggle = false) {
+    displayGUI = toggle;
+  }
 
   void setSourceAudioFolder(const std::string& folder) {
     audioFolder = folder;
@@ -156,6 +160,10 @@ struct adm_player : App {
   void onCreate() override {
     if (displayGUI) {
       imguiInit();
+      std::cout << "GUI initialized" << std::endl;
+    }
+    else {
+      std::cout << "GUI disabled" << std::endl;
     }
   }
 
@@ -453,7 +461,7 @@ struct adm_player : App {
   }
 
   void onExit() override {
-    imguiShutdown();
+    if (displayGUI) imguiShutdown();
   }
 };
 

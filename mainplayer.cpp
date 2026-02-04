@@ -10,6 +10,7 @@ Includes real-time dB meters for all 54 channels.
 int main() {
   adm_player adm_player_instance;
 
+  adm_player_instance.toggleGUI(false); // disable GUI
   adm_player_instance.setSourceAudioFolder("../adm-allo-player/sourceAudio/");
 
   // Configure audio for 54 output channels, 0 input channels
