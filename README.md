@@ -15,22 +15,23 @@ This application plays back 54-channel audio files and maps them to the Allosphe
 
 The Allosphere has **54 speakers** arranged in three rings:
 
-| Ring | Speakers | Allosphere Channels | Elevation |
-|------|----------|---------------------|-----------|
-| Upper | 12 | 1-12 | Positive (above ear level) |
-| Middle | 30 | 17-46 | Zero (ear level) |
-| Lower | 12 | 49-60 | Negative (below ear level) |
+| Ring   | Speakers | Allosphere Channels | Elevation                  |
+| ------ | -------- | ------------------- | -------------------------- |
+| Upper  | 12       | 1-12                | Positive (above ear level) |
+| Middle | 30       | 17-46               | Zero (ear level)           |
+| Lower  | 12       | 49-60               | Negative (below ear level) |
+| Sub    | 1        |                     | 48                         |
 
-**Skipped channels**: 13-16, 47-48 (no physical speakers)
+**Skipped channels**: 13-16, 47 (no physical speakers)
 
 ## Files
 
-| File | Description |
-|------|-------------|
-| `mainplayer.cpp` | Main application with GUI and audio playback |
+| File                 | Description                                    |
+| -------------------- | ---------------------------------------------- |
+| `mainplayer.cpp`     | Main application with GUI and audio playback   |
 | `channelMapping.hpp` | Channel mapping configuration (file → speaker) |
-| `CMakeLists.txt` | CMake build configuration |
-| `sourceAudio/` | Directory for audio files |
+| `CMakeLists.txt`     | CMake build configuration                      |
+| `sourceAudio/`       | Directory for audio files                      |
 
 ---
 
@@ -64,16 +65,16 @@ Click **↻ Refresh** to rescan the folder if you add new files while the app is
 
 ### GUI Controls
 
-| Control | Function |
-|---------|----------|
+| Control           | Function                            |
+| ----------------- | ----------------------------------- |
 | **File Dropdown** | Select audio file from sourceAudio/ |
-| **↻ Refresh** | Rescan folder for new files |
-| **Play/Pause** | Start or pause playback |
-| **Stop** | Stop and reset to beginning |
-| **Rewind** | Return to beginning |
-| **Loop** | Toggle looping |
-| **Gain** | Master volume (0.0 - 1.0) |
-| **Show Meters** | Toggle dB meter display |
+| **↻ Refresh**     | Rescan folder for new files         |
+| **Play/Pause**    | Start or pause playback             |
+| **Stop**          | Stop and reset to beginning         |
+| **Rewind**        | Return to beginning                 |
+| **Loop**          | Toggle looping                      |
+| **Gain**          | Master volume (0.0 - 1.0)           |
+| **Show Meters**   | Toggle dB meter display             |
 
 ### Supported Audio Formats
 
@@ -91,6 +92,7 @@ Audio file channels map to Allosphere outputs as follows:
 File Ch 1-12  → Allo Ch 1-12   (Upper Ring)
 File Ch 13-42 → Allo Ch 17-46  (Middle Ring)
 File Ch 43-54 → Allo Ch 49-60  (Lower Ring)
+File Ch 56 -> Allo Ch 48 (Sub)
 ```
 
 To modify mappings, edit `channelMapping.hpp`.
