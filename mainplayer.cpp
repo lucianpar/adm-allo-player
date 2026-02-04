@@ -8,11 +8,13 @@ Includes real-time dB meters for all 54 channels.
 #include "mainplayer.hpp"
 
 int main() {
-  MyApp app;
+  adm_player adm_player_instance;
+
+  adm_player_instance.setSourceAudioFolder("../adm-allo-player/sourceAudio/");
 
   // Configure audio for 54 output channels, 0 input channels
   // Adjust sample rate and buffer size as needed
-  app.configureAudio(48000,  // Sample rate (adjust to match your file)
+  adm_player_instance.configureAudio(48000,  // Sample rate (adjust to match your file)
                      512,    // Buffer size
                      60,     // Output channels
                      0);     // Input channels
@@ -27,6 +29,6 @@ int main() {
   std::cout << "  L - Toggle Loop" << std::endl;
   std::cout << "\n" << std::endl;
 
-  app.start();
+  adm_player_instance.start();
   return 0;
 }

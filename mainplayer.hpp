@@ -21,7 +21,7 @@ Includes real-time dB meters for all 54 channels.
 
 using namespace al;
 
-struct MyApp : App {
+struct adm_player : App {
   SoundFile soundFile;
   uint64_t frameCounter = 0;
   std::vector<float> buffer;
@@ -32,10 +32,12 @@ struct MyApp : App {
   float gain = 0.5f;
 
   // Audio file info
-  int numChannels = 56;
-  int expectedChannels = 60;
-  std::string audioFolder = "../adm-allo-player/sourceAudio/";
-  std::string audioFileName = "swale-allo-render.wav";
+  int numChannels = 56; //default 
+  int expectedChannels = 60; //default
+  std::string audioFolder;
+  // std::string audioFolder = "../adm-allo-player/sourceAudio/";
+  //std::string audioFileName = "1-swale-allo-render.wav";
+  // selection is done via audioFiles + selectedFileIndex (no single audioFileName string)
 
   // Metering
   std::vector<float> channelLevels;  // Linear amplitude for each channel
@@ -49,6 +51,12 @@ struct MyApp : App {
   std::vector<std::string> audioFiles;  // List of available audio files
   int selectedFileIndex = 0;            // Currently selected file index
 
+  //gui 
+  bool displayGUI = true;
+
+  void setSourceAudioFolder(const std::string& folder) {
+    audioFolder = folder;
+  }
   // Scan sourceAudio folder for .wav files
   void scanAudioFiles() {
     audioFiles.clear();
@@ -58,22 +66,8 @@ struct MyApp : App {
 
     try {
       for (const auto& entry : std::filesystem::directory_iterator(audioDir)) {
-        if (entry.is_regular_file()) {
-          std::string filename = entry.path().filename().string();
-          if (filename.find(".wav") != std::string::npos) {
-            audioFiles.push_back(filename);
-          }
-        }
-      }
-
-      // Sort alphabetically
-      std::sort(audioFiles.begin(), audioFiles.end());
-
-      // Find current file index
-      for (size_t i = 0; i < audioFiles.size(); i++) {
-        if (audioFiles[i] == audioFileName) {
-          selectedFileIndex = static_cast<int>(i);
-          break;
+        if (entry.is_regular_file() && entry.path().extension() == ".wav") {
+          audioFiles.push_back(entry.path().filename().string());
         }
       }
     } catch (const std::exception& e) {
@@ -106,7 +100,7 @@ struct MyApp : App {
     std::cout << "  Duration: " << (double)soundFile.frameCount / soundFile.sampleRate << " seconds" << std::endl;
 
     numChannels = soundFile.channels;
-    audioFileName = filename;
+    // note: we don't store a single filename string; selection is tracked by audioFiles[selectedFileIndex]
 
     if (numChannels != expectedChannels) {
       std::cerr << "⚠ WARNING: Expected " << expectedChannels << " channels but file has "
@@ -130,53 +124,44 @@ struct MyApp : App {
   }
 
   void onInit() override {
-    // Build audio file path using currentPath (like ShaderPlayback)
-    std::string audioPath = al::File::currentPath() + audioFolder + audioFileName;
-
     std::cout << "\n=== 54-Channel Audio Player ===" << std::endl;
     std::cout << "Current path: " << al::File::currentPath() << std::endl;
-    std::cout << "Loading audio file: " << audioPath << std::endl;
 
-    if (!soundFile.open(audioPath.c_str())) {
-      std::cerr << "✗ ERROR: Could not open file: " << audioPath << std::endl;
-      std::cerr << "Please update the audioFolder or audioFileName variables." << std::endl;
+    // populate audioFiles from folder and pick selectedFileIndex
+    scanAudioFiles();
+    if (audioFiles.empty()) {
+      std::cerr << "✗ ERROR: No audio files found in: " << al::File::currentPath() + audioFolder << std::endl;
+      std::cerr << "Please update the audioFolder or add files." << std::endl;
+      quit();
+      return;
+    }
+    if (selectedFileIndex < 0 || selectedFileIndex >= static_cast<int>(audioFiles.size())) selectedFileIndex = 0;
+
+    // Load the selected file (loadAudioFile prints details)
+    if (!loadAudioFile(audioFiles[selectedFileIndex])) {
+      std::cerr << "✗ ERROR: Could not open selected audio file." << std::endl;
       quit();
       return;
     }
 
-    std::cout << "✓ Audio file loaded successfully" << std::endl;
-    std::cout << "  Sample rate: " << soundFile.sampleRate << " Hz" << std::endl;
-    std::cout << "  Channels: " << soundFile.channels << std::endl;
-    std::cout << "  Frame count: " << soundFile.frameCount << std::endl;
-    std::cout << "  Duration: " << (double)soundFile.frameCount / soundFile.sampleRate << " seconds" << std::endl;
-
-    numChannels = soundFile.channels;
-
-    if (numChannels != expectedChannels) {
-      std::cerr << "⚠ WARNING: Expected " << expectedChannels << " channels but file has "
-                << numChannels << " channels." << std::endl;
-      std::cout << "Will use " << numChannels << " output channels." << std::endl;
-    }
-
-    // Allocate buffer for deinterleaving
-    int framesPerBuffer = 512; // Will be updated in onSound
+    // Ensure buffers/meters sized (loadAudioFile already resizes but keep safe)
+    int framesPerBuffer = 512;
     buffer.resize(framesPerBuffer * numChannels);
-    
-    // Initialize metering (for output channels)
     channelLevels.resize(expectedChannels, 0.0f);
     channelPeaks.resize(expectedChannels, 0.0f);
-    peakHoldCounters.resize(expectedChannels, 0);    // Scan for available audio files
-    scanAudioFiles();
-
+    peakHoldCounters.resize(expectedChannels, 0);
     frameCounter = 0;
   }
 
   void onCreate() override {
-    imguiInit();
+    if (displayGUI) {
+      imguiInit();
+    }
   }
 
   void onDraw(Graphics& g) override {
-    imguiBeginFrame();
+    if (displayGUI) {
+      imguiBeginFrame();
 
     ImGui::Begin("54-Channel Audio Player");
 
@@ -184,7 +169,8 @@ struct MyApp : App {
     ImGui::Text("Audio File:");
     if (!audioFiles.empty()) {
       // Create combo box with available files
-      if (ImGui::BeginCombo("##fileselect", audioFileName.c_str())) {
+      const char* preview = audioFiles[selectedFileIndex].c_str();
+      if (ImGui::BeginCombo("##fileselect", preview)) {
         for (int i = 0; i < static_cast<int>(audioFiles.size()); i++) {
           bool isSelected = (selectedFileIndex == i);
           if (ImGui::Selectable(audioFiles[i].c_str(), isSelected)) {
@@ -325,6 +311,7 @@ struct MyApp : App {
     imguiEndFrame();
     g.clear(0, 0, 0);
     imguiDraw();
+  }
   }
 
   void onSound(AudioIOData& io) override {
