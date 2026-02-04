@@ -25,7 +25,7 @@
 namespace ChannelMapping {
 
 // Number of channel mappings (54 audio file channels -> 54 speakers)
-constexpr int NUM_CHANNELS = 55;
+constexpr int NUM_CHANNELS = 56;
 
 // ============================================================================
 // DEFAULT CHANNEL MAP (0-indexed) - Use for array/buffer indexing
@@ -151,7 +151,7 @@ constexpr std::array<std::pair<int, int>, NUM_CHANNELS> oneIndexedChannelMap = {
     {42, 46},  // File Ch 42 -> Allo Ch 46
     
     // === LOWER RING (12 speakers) - Allo Ch 49-60 ===
-    // (Allo Ch 47-48 are SKIPPED)
+    // (Allo Ch 47 is skipped and 48 is saved for the sub)
     {43, 49},  // File Ch 43 -> Allo Ch 49
     {44, 50},  // File Ch 44 -> Allo Ch 50
     {45, 51},  // File Ch 45 -> Allo Ch 51

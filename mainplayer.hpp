@@ -1,0 +1,477 @@
+#ifndef MAINPLAYER_HPP
+#define MAINPLAYER_HPP
+
+/*
+54-Channel Audio Playback System
+Plays back a multichannel audio file with all channels mapped to individual outputs.
+Includes GUI controls for playback, pause, loop, and rewind.
+Includes real-time dB meters for all 54 channels.
+*/
+
+#include <algorithm>
+#include <cmath>
+#include <iostream>
+#include <vector>
+#include <filesystem>
+#include "al/app/al_App.hpp"
+#include "al/io/al_File.hpp"
+#include "al/io/al_Imgui.hpp"
+#include "al/sound/al_SoundFile.hpp"
+#include "channelMapping.hpp"
+
+namespace fs = std::filesystem;
+
+using namespace al;
+
+struct MyApp : App {
+  SoundFile soundFile;
+  uint64_t frameCounter = 0;
+  std::vector<float> buffer;
+
+  // Playback controls
+  bool playing = false;
+  bool loop = true;
+  float gain = 0.5f;
+
+  // Audio file info
+  int numChannels = 56;
+  int expectedChannels = 60;
+  std::string audioFolder = "/../sourceAudio/";
+  std::string audioFileName = "swale-allo-render.wav";
+
+  // Metering
+  std::vector<float> channelLevels;  // Linear amplitude for each channel
+  std::vector<float> channelPeaks;   // Peak hold for each channel
+  int peakHoldFrames = 24;           // How long to hold peaks (in render frames)
+  std::vector<int> peakHoldCounters; // Counter for peak hold
+  float meterDecayRate = 0.95f;      // How fast meters decay
+  bool showMeters = true;
+
+  // File selection
+  std::vector<std::string> audioFiles;  // List of available audio files
+  int selectedFileIndex = 0;            // Currently selected file index
+
+  // Scan sourceAudio folder for .wav files
+  void scanAudioFiles() {
+    audioFiles.clear();
+    std::string audioDir = al::File::currentPath() + audioFolder;
+
+    std::cout << "Scanning for audio files in: " << audioDir << std::endl;
+
+    try {
+      for (const auto& entry : fs::directory_iterator(audioDir)) {
+        if (entry.is_regular_file()) {
+          std::string ext = entry.path().extension().string();
+          // Convert to lowercase for comparison
+          std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+          if (ext == ".wav" || ext == ".aiff" || ext == ".aif" || ext == ".flac") {
+            audioFiles.push_back(entry.path().filename().string());
+            std::cout << "  Found: " << entry.path().filename().string() << std::endl;
+          }
+        }
+      }
+      // Sort alphabetically
+      std::sort(audioFiles.begin(), audioFiles.end());
+
+      // Find current file index
+      for (size_t i = 0; i < audioFiles.size(); i++) {
+        if (audioFiles[i] == audioFileName) {
+          selectedFileIndex = static_cast<int>(i);
+          break;
+        }
+      }
+    } catch (const std::exception& e) {
+      std::cerr << "Error scanning audio directory: " << e.what() << std::endl;
+    }
+
+    std::cout << "Found " << audioFiles.size() << " audio files" << std::endl;
+  }
+
+  // Load a new audio file
+  bool loadAudioFile(const std::string& filename) {
+    std::string audioPath = al::File::currentPath() + audioFolder + filename;
+
+    std::cout << "\n=== Loading new audio file ===" << std::endl;
+    std::cout << "File: " << audioPath << std::endl;
+
+    // Stop playback during load
+    bool wasPlaying = playing;
+    playing = false;
+
+    if (!soundFile.open(audioPath.c_str())) {
+      std::cerr << "✗ ERROR: Could not open file: " << audioPath << std::endl;
+      return false;
+    }
+
+    std::cout << "✓ Audio file loaded successfully" << std::endl;
+    std::cout << "  Sample rate: " << soundFile.sampleRate << " Hz" << std::endl;
+    std::cout << "  Channels: " << soundFile.channels << std::endl;
+    std::cout << "  Frame count: " << soundFile.frameCount << std::endl;
+    std::cout << "  Duration: " << (double)soundFile.frameCount / soundFile.sampleRate << " seconds" << std::endl;
+
+    numChannels = soundFile.channels;
+    audioFileName = filename;
+
+    if (numChannels != expectedChannels) {
+      std::cerr << "⚠ WARNING: Expected " << expectedChannels << " channels but file has "
+                << numChannels << " channels." << std::endl;
+    }
+
+    // Reset playback position
+    frameCounter = 0;
+
+    // Resize buffers for new channel count
+    int framesPerBuffer = 512;
+    buffer.resize(framesPerBuffer * numChannels);
+    channelLevels.resize(expectedChannels, 0.0f);
+    channelPeaks.resize(expectedChannels, 0.0f);
+    peakHoldCounters.resize(expectedChannels, 0);
+
+    // Resume playback if was playing
+    playing = wasPlaying;
+
+    return true;
+  }
+
+  void onInit() override {
+    // Build audio file path using currentPath (like ShaderPlayback)
+    std::string audioPath = al::File::currentPath() + audioFolder + audioFileName;
+
+    std::cout << "\n=== 54-Channel Audio Player ===" << std::endl;
+    std::cout << "Current path: " << al::File::currentPath() << std::endl;
+    std::cout << "Loading audio file: " << audioPath << std::endl;
+
+    if (!soundFile.open(audioPath.c_str())) {
+      std::cerr << "✗ ERROR: Could not open file: " << audioPath << std::endl;
+      std::cerr << "Please update the audioFolder or audioFileName variables." << std::endl;
+      quit();
+      return;
+    }
+
+    std::cout << "✓ Audio file loaded successfully" << std::endl;
+    std::cout << "  Sample rate: " << soundFile.sampleRate << " Hz" << std::endl;
+    std::cout << "  Channels: " << soundFile.channels << std::endl;
+    std::cout << "  Frame count: " << soundFile.frameCount << std::endl;
+    std::cout << "  Duration: " << (double)soundFile.frameCount / soundFile.sampleRate << " seconds" << std::endl;
+
+    numChannels = soundFile.channels;
+
+    if (numChannels != expectedChannels) {
+      std::cerr << "⚠ WARNING: Expected " << expectedChannels << " channels but file has "
+                << numChannels << " channels." << std::endl;
+      std::cout << "Will use " << numChannels << " output channels." << std::endl;
+    }
+
+    // Allocate buffer for deinterleaving
+    int framesPerBuffer = 512; // Will be updated in onSound
+    buffer.resize(framesPerBuffer * numChannels);
+    
+    // Initialize metering (for output channels)
+    channelLevels.resize(expectedChannels, 0.0f);
+    channelPeaks.resize(expectedChannels, 0.0f);
+    peakHoldCounters.resize(expectedChannels, 0);    // Scan for available audio files
+    scanAudioFiles();
+
+    frameCounter = 0;
+  }
+
+  void onCreate() override {
+    imguiInit();
+  }
+
+  void onDraw(Graphics& g) override {
+    imguiBeginFrame();
+
+    ImGui::Begin("54-Channel Audio Player");
+
+    // File selector dropdown
+    ImGui::Text("Audio File:");
+    if (!audioFiles.empty()) {
+      // Create combo box with available files
+      if (ImGui::BeginCombo("##fileselect", audioFileName.c_str())) {
+        for (int i = 0; i < static_cast<int>(audioFiles.size()); i++) {
+          bool isSelected = (selectedFileIndex == i);
+          if (ImGui::Selectable(audioFiles[i].c_str(), isSelected)) {
+            if (i != selectedFileIndex) {
+              selectedFileIndex = i;
+              loadAudioFile(audioFiles[i]);
+            }
+          }
+          if (isSelected) {
+            ImGui::SetItemDefaultFocus();
+          }
+        }
+        ImGui::EndCombo();
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("↻ Refresh")) {
+        scanAudioFiles();
+      }
+    } else {
+      ImGui::Text("No audio files found in sourceAudio/");
+      if (ImGui::Button("Scan for Files")) {
+        scanAudioFiles();
+      }
+    }
+
+    ImGui::Separator();
+    ImGui::Text("File Info:");
+    ImGui::Text("  File Channels: %d", numChannels);
+    ImGui::Text("  Output Channels: %d", expectedChannels);
+    ImGui::Text("  Sample Rate: %d Hz", soundFile.sampleRate);
+    ImGui::Text("  Duration: %.2f seconds", (double)soundFile.frameCount / soundFile.sampleRate);
+
+    ImGui::Separator();
+    ImGui::Text("Playback:");
+    ImGui::Text("  Current Frame: %llu / %llu", frameCounter, soundFile.frameCount);
+    ImGui::Text("  Current Time: %.2f / %.2f seconds",
+                (double)frameCounter / soundFile.sampleRate,
+                (double)soundFile.frameCount / soundFile.sampleRate);
+
+    ImGui::Separator();
+    ImGui::Text("Controls:");
+
+    if (ImGui::Button(playing ? "⏸ Pause" : "▶ Play")) {
+      playing = !playing;
+    }
+
+    ImGui::SameLine();
+    if (ImGui::Button("⏹ Stop")) {
+      playing = false;
+      frameCounter = 0;
+    }
+
+    ImGui::SameLine();
+    if (ImGui::Button("⏮ Rewind")) {
+      frameCounter = 0;
+    }
+
+    if (ImGui::Checkbox("Loop", &loop)) {
+      std::cout << "Loop: " << (loop ? "ON" : "OFF") << std::endl;
+    }
+
+    if (ImGui::SliderFloat("Gain", &gain, 0.0f, 1.0f)) {
+      std::cout << "Gain: " << gain << std::endl;
+    }
+
+    ImGui::Separator();
+    ImGui::Checkbox("Show Channel Meters", &showMeters);
+
+    if (showMeters) {
+      ImGui::Text("Channel Levels (dB):");
+
+      // Display meters in a scrollable area
+      ImGui::BeginChild("Meters", ImVec2(0, 400), true);
+
+      for (int ch = 0; ch < expectedChannels; ch++) {
+        // Convert linear amplitude to dB
+        float levelDB = -120.0f; // Silence floor
+        if (channelLevels[ch] > 0.0f) {
+          levelDB = 20.0f * log10f(channelLevels[ch]);
+        }
+
+        float peakDB = -120.0f;
+        if (channelPeaks[ch] > 0.0f) {
+          peakDB = 20.0f * log10f(channelPeaks[ch]);
+        }
+
+        // Clamp to reasonable display range
+        levelDB = (levelDB < -60.0f) ? -60.0f : levelDB;
+        peakDB = (peakDB < -60.0f) ? -60.0f : peakDB;
+
+        // Normalize to 0-1 range for display (-60dB to 0dB)
+        float levelNorm = (levelDB + 60.0f) / 60.0f;
+        float peakNorm = (peakDB + 60.0f) / 60.0f;
+
+        // Color based on level (green -> yellow -> red)
+        ImVec4 color;
+        if (levelNorm < 0.5f) {
+          color = ImVec4(0.0f, 1.0f, 0.0f, 1.0f); // Green
+        } else if (levelNorm < 0.85f) {
+          color = ImVec4(1.0f, 1.0f, 0.0f, 1.0f); // Yellow
+        } else {
+          color = ImVec4(1.0f, 0.0f, 0.0f, 1.0f); // Red
+        }
+
+        // Channel label and dB value
+        ImGui::Text("Ch %2d:", ch + 1);
+        ImGui::SameLine(60);
+
+        // Progress bar for meter
+        ImGui::PushStyleColor(ImGuiCol_PlotHistogram, color);
+        ImGui::ProgressBar(levelNorm, ImVec2(200, 0), "");
+        ImGui::PopStyleColor();
+
+        ImGui::SameLine();
+
+        // Peak indicator (small vertical line)
+        if (peakNorm > 0.01f) {
+          ImGui::Text("|");
+        } else {
+          ImGui::Text(" ");
+        }
+
+        ImGui::SameLine();
+
+        // Show dB value
+        if (levelDB > -60.0f) {
+          ImGui::Text("%5.1f dB", levelDB);
+        } else {
+          ImGui::Text("  -inf");
+        }
+      }
+
+      ImGui::EndChild();
+    }
+
+    ImGui::End();
+
+    imguiEndFrame();
+    g.clear(0, 0, 0);
+    imguiDraw();
+  }
+
+  void onSound(AudioIOData& io) override {
+    if (!soundFile.data.size()) {
+      // No file loaded, output silence
+      while (io()) {
+        for (int ch = 0; ch < io.channelsOut(); ch++) {
+          io.out(ch) = 0.0f;
+        }
+      }
+      return;
+    }
+
+    uint64_t numFrames = io.framesPerBuffer();
+
+    // Resize buffer if needed
+    if (buffer.size() < numFrames * numChannels) {
+      buffer.resize(numFrames * numChannels);
+    }
+
+    // If not playing, output silence
+    if (!playing) {
+      while (io()) {
+        for (int ch = 0; ch < io.channelsOut(); ch++) {
+          io.out(ch) = 0.0f;
+        }
+      }
+      return;
+    }
+
+    // Check if we're at the end
+    if (frameCounter >= soundFile.frameCount) {
+      if (loop) {
+        frameCounter = 0;
+      } else {
+        playing = false;
+        while (io()) {
+          for (int ch = 0; ch < io.channelsOut(); ch++) {
+            io.out(ch) = 0.0f;
+          }
+        }
+        return;
+      }
+    }
+
+    // Adjust numFrames if we're near the end
+    if (frameCounter + numFrames > soundFile.frameCount) {
+      numFrames = soundFile.frameCount - frameCounter;
+    }
+
+    // Get pointer to current frame in the soundfile
+    float* frames = soundFile.getFrame(frameCounter);
+
+    // Copy interleaved data to buffer
+    for (uint64_t i = 0; i < numFrames * numChannels; i++) {
+      buffer[i] = frames[i];
+    }
+
+    // Deinterleave and output to all channels WITH REMAPPING
+    int outputChannels = (numChannels < io.channelsOut()) ? numChannels : io.channelsOut();
+    
+    // Reset channel levels for this buffer (size to output channels)
+    std::vector<float> maxLevels(io.channelsOut(), 0.0f);    for (uint64_t frame = 0; frame < numFrames; frame++) {
+      // Clear all outputs first
+      for (int ch = 0; ch < io.channelsOut(); ch++) {
+        io.out(ch, frame) = 0.0f;
+      }
+
+      // Apply channel mapping
+      for (int i = 0; i < ChannelMapping::NUM_CHANNELS && i < numChannels; i++) {
+        int fileChannel = ChannelMapping::channelMap[i].first;
+        int outputChannel = ChannelMapping::channelMap[i].second;
+
+        // Bounds check
+        if (fileChannel < numChannels && outputChannel < io.channelsOut()) {
+          float sample = buffer[frame * numChannels + fileChannel] * gain;
+          io.out(outputChannel, frame) = sample;
+
+          // Track max level for metering (use output channel index for display)
+          float absSample = fabsf(sample);
+          if (absSample > maxLevels[outputChannel]) {
+            maxLevels[outputChannel] = absSample;
+          }
+        }
+      }
+    }
+
+    // Update meters with max levels from this buffer
+    for (int ch = 0; ch < io.channelsOut(); ch++) {
+      // Smooth decay for current level
+      channelLevels[ch] = channelLevels[ch] * meterDecayRate;
+
+      // Update with new max if higher
+      if (maxLevels[ch] > channelLevels[ch]) {
+        channelLevels[ch] = maxLevels[ch];
+      }
+
+      // Update peak hold
+      if (maxLevels[ch] > channelPeaks[ch]) {
+        channelPeaks[ch] = maxLevels[ch];
+        peakHoldCounters[ch] = peakHoldFrames;
+      } else {
+        // Decay peak hold
+        if (peakHoldCounters[ch] > 0) {
+          peakHoldCounters[ch]--;
+        } else {
+          channelPeaks[ch] = channelPeaks[ch] * meterDecayRate;
+        }
+      }
+    }
+
+    // Fill remaining frames with silence if we read fewer frames
+    for (uint64_t frame = numFrames; frame < io.framesPerBuffer(); frame++) {
+      for (int ch = 0; ch < io.channelsOut(); ch++) {
+        io.out(ch, frame) = 0.0f;
+      }
+    }
+
+    frameCounter += numFrames;
+  }
+
+  bool onKeyDown(const Keyboard& k) override {
+    if (k.key() == ' ') {
+      playing = !playing;
+      std::cout << (playing ? "▶ Playing" : "⏸ Paused") << std::endl;
+      return true;
+    }
+    if (k.key() == 'r' || k.key() == 'R') {
+      frameCounter = 0;
+      std::cout << "⏮ Rewound to beginning" << std::endl;
+      return true;
+    }
+    if (k.key() == 'l' || k.key() == 'L') {
+      loop = !loop;
+      std::cout << "Loop: " << (loop ? "ON" : "OFF") << std::endl;
+      return true;
+    }
+    return false;
+  }
+
+  void onExit() override {
+    imguiShutdown();
+  }
+};
+
+#endif // MAINPLAYER_HPP
