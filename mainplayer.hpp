@@ -19,8 +19,6 @@ Includes real-time dB meters for all 54 channels.
 #include "al/sound/al_SoundFile.hpp"
 #include "channelMapping.hpp"
 
-namespace fs = std::filesystem;
-
 using namespace al;
 
 struct MyApp : App {
@@ -36,7 +34,7 @@ struct MyApp : App {
   // Audio file info
   int numChannels = 56;
   int expectedChannels = 60;
-  std::string audioFolder = "/../sourceAudio/";
+  std::string audioFolder = "../adm-allo-player/sourceAudio/";
   std::string audioFileName = "swale-allo-render.wav";
 
   // Metering
@@ -59,17 +57,15 @@ struct MyApp : App {
     std::cout << "Scanning for audio files in: " << audioDir << std::endl;
 
     try {
-      for (const auto& entry : fs::directory_iterator(audioDir)) {
+      for (const auto& entry : std::filesystem::directory_iterator(audioDir)) {
         if (entry.is_regular_file()) {
-          std::string ext = entry.path().extension().string();
-          // Convert to lowercase for comparison
-          std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-          if (ext == ".wav" || ext == ".aiff" || ext == ".aif" || ext == ".flac") {
-            audioFiles.push_back(entry.path().filename().string());
-            std::cout << "  Found: " << entry.path().filename().string() << std::endl;
+          std::string filename = entry.path().filename().string();
+          if (filename.find(".wav") != std::string::npos) {
+            audioFiles.push_back(filename);
           }
         }
       }
+
       // Sort alphabetically
       std::sort(audioFiles.begin(), audioFiles.end());
 
