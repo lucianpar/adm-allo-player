@@ -442,21 +442,46 @@ struct adm_player : App {
   }
 
   bool onKeyDown(const Keyboard& k) override {
+    // Play/pause
     if (k.key() == ' ') {
       playing = !playing;
       std::cout << (playing ? "▶ Playing" : "⏸ Paused") << std::endl;
       return true;
     }
+    // Rewind
     if (k.key() == 'r' || k.key() == 'R') {
       frameCounter = 0;
       std::cout << "⏮ Rewound to beginning" << std::endl;
       return true;
     }
+    // Toggle loop
     if (k.key() == 'l' || k.key() == 'L') {
       loop = !loop;
       std::cout << "Loop: " << (loop ? "ON" : "OFF") << std::endl;
       return true;
     }
+
+    // Select audio file via keys '1'..'9' (1 selects first file)
+    char c = k.key();
+    if (c >= '1' && c <= '9') {
+      int idx = static_cast<int>(c - '1'); // '1'->0, '2'->1, ...
+      if (idx < static_cast<int>(audioFiles.size())) {
+        if (idx != selectedFileIndex) {
+          selectedFileIndex = idx;
+          if (loadAudioFile(audioFiles[selectedFileIndex])) {
+            std::cout << "Loaded file [" << selectedFileIndex + 1 << "]: " << audioFiles[selectedFileIndex] << std::endl;
+          } else {
+            std::cerr << "Failed to load file: " << audioFiles[selectedFileIndex] << std::endl;
+          }
+        } else {
+          std::cout << "Already selected file " << selectedFileIndex + 1 << std::endl;
+        }
+      } else {
+        std::cerr << "No audio file for key '" << c << "' (index " << idx << " out of range)" << std::endl;
+      }
+      return true;
+    }
+
     return false;
   }
 
