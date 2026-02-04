@@ -1,9 +1,8 @@
 # Ignore everything in the root
-/*
+
 
 # Except the 54ChanPlayer folder and gitignore itself
-!.gitignore
-!54ChanPlayer/
+
 
 # Ignore all allolib and al_ext changes
 allolib/
