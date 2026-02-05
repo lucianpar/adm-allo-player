@@ -445,20 +445,20 @@ struct adm_player {
     // Play/pause
     if (k.key() == ' ') {
       playing = !playing;
-      std::cout << (playing ? "▶ Playing" : "⏸ Paused") << std::endl;
-      return true;
+      std::cout << (playing ? "▶ Playing audio" : "⏸ Paused audio") << std::endl;
+      //return true;
     }
     // Rewind
     if (k.key() == 'r' || k.key() == 'R') {
       frameCounter = 0;
       std::cout << "⏮ Rewound to beginning" << std::endl;
-      return true;
+      //return true;
     }
     // Toggle loop
     if (k.key() == 'l' || k.key() == 'L') {
       loop = !loop;
       std::cout << "Loop: " << (loop ? "ON" : "OFF") << std::endl;
-      return true;
+      //return true;
     }
 
     // Select audio file via keys '1'..'9' (1 selects first file)
@@ -479,7 +479,7 @@ struct adm_player {
       } else {
         std::cerr << "No audio file for key '" << c << "' (index " << idx << " out of range)" << std::endl;
       }
-      return true;
+      //return true;
     }
 
     return false;
