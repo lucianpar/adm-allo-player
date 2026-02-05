@@ -74,6 +74,8 @@ struct adm_player {
           audioFiles.push_back(entry.path().filename().string());
         }
       }
+      // Make ordering deterministic: lexicographic sort (case-sensitive, std::string <)
+      std::sort(audioFiles.begin(), audioFiles.end());
     } catch (const std::exception& e) {
       std::cerr << "Error scanning audio directory: " << e.what() << std::endl;
     }
