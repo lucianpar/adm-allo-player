@@ -21,7 +21,7 @@ Includes real-time dB meters for all 54 channels.
 
 using namespace al;
 
-struct adm_player : App {
+struct adm_player {
   SoundFile soundFile;
   uint64_t frameCounter = 0;
   std::vector<float> buffer;
@@ -53,7 +53,7 @@ struct adm_player : App {
 
   //gui 
   bool displayGUI;
-
+  public:
   void toggleGUI(bool toggle = false) {
     displayGUI = toggle;
   }
@@ -127,7 +127,7 @@ struct adm_player : App {
     return true;
   }
 
-  void onInit() override {
+  void onInit()  {
     std::cout << "\n=== 54-Channel Audio Player ===" << std::endl;
     std::cout << "Current path: " << al::File::currentPath() << std::endl;
 
@@ -136,7 +136,7 @@ struct adm_player : App {
     if (audioFiles.empty()) {
       std::cerr << "✗ ERROR: No audio files found in: " << al::File::currentPath() + audioFolder << std::endl;
       std::cerr << "Please update the audioFolder or add files." << std::endl;
-      quit();
+      // quit();
       return;
     }
     if (selectedFileIndex < 0 || selectedFileIndex >= static_cast<int>(audioFiles.size())) selectedFileIndex = 0;
@@ -144,7 +144,7 @@ struct adm_player : App {
     // Load the selected file (loadAudioFile prints details)
     if (!loadAudioFile(audioFiles[selectedFileIndex])) {
       std::cerr << "✗ ERROR: Could not open selected audio file." << std::endl;
-      quit();
+      // quit();
       return;
     }
 
@@ -157,7 +157,7 @@ struct adm_player : App {
     frameCounter = 0;
   }
 
-  void onCreate() override {
+  void onCreate() {
     if (displayGUI) {
       imguiInit();
       std::cout << "GUI initialized" << std::endl;
@@ -167,7 +167,7 @@ struct adm_player : App {
     }
   }
 
-  void onDraw(Graphics& g) override {
+  void onDraw(Graphics& g) {
     if (displayGUI) {
       imguiBeginFrame();
 
@@ -322,7 +322,7 @@ struct adm_player : App {
   }
   }
 
-  void onSound(AudioIOData& io) override {
+  void onSound(AudioIOData& io) {
     if (!soundFile.data.size()) {
       // No file loaded, output silence
       while (io()) {
@@ -441,7 +441,7 @@ struct adm_player : App {
     frameCounter += numFrames;
   }
 
-  bool onKeyDown(const Keyboard& k) override {
+  bool onKeyDown(const Keyboard& k) {
     // Play/pause
     if (k.key() == ' ') {
       playing = !playing;
@@ -485,7 +485,7 @@ struct adm_player : App {
     return false;
   }
 
-  void onExit() override {
+  void onExit() {
     if (displayGUI) imguiShutdown();
   }
 };
