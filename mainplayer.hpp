@@ -12,7 +12,6 @@ Includes real-time dB meters for all 54 channels.
 #include <cmath>
 #include <iostream>
 #include <vector>
-#include <filesystem>
 #include "al/app/al_App.hpp"
 #include "al/io/al_File.hpp"
 #include "al/io/al_Imgui.hpp"
@@ -69,15 +68,24 @@ struct adm_player {
     std::cout << "Scanning for audio files in: " << audioDir << std::endl;
 
     try {
-      for (const auto& entry : std::filesystem::directory_iterator(audioDir)) {
-        if (entry.is_regular_file() && entry.path().extension() == ".wav") {
-          audioFiles.push_back(entry.path().filename().string());
-        }
+      // Use al::filterInDir to find .wav files
+      al::FileList wavFiles = al::filterInDir(audioDir, [](const al::FilePath& fp) {
+        return al::checkExtension(fp, ".wav");
+      }, false); // false = not recursive
+
+      // Convert FileList to vector of strings
+      for (auto& fp : wavFiles) {
+        audioFiles.push_back(fp.file());
       }
+
       // Make ordering deterministic: lexicographic sort (case-sensitive, std::string <)
       std::sort(audioFiles.begin(), audioFiles.end());
     } catch (const std::exception& e) {
       std::cerr << "Error scanning audio directory: " << e.what() << std::endl;
+    }
+
+    std::cout << "Found " << audioFiles.size() << " audio files" << std::endl;
+  }
     }
 
     std::cout << "Found " << audioFiles.size() << " audio files" << std::endl;
