@@ -86,10 +86,6 @@ struct adm_player {
 
     std::cout << "Found " << audioFiles.size() << " audio files" << std::endl;
   }
-    }
-
-    std::cout << "Found " << audioFiles.size() << " audio files" << std::endl;
-  }
 
   // Load a new audio file
   bool loadAudioFile(const std::string& filename) {
