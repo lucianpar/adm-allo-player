@@ -526,6 +526,7 @@ struct adm_player {
 
   bool onKeyDown(const Keyboard& k) {
     // Play/pause
+
     if (k.key() == ' ') {
       playing = !playing;
       std::cout << (playing ? "▶ Playing audio" : "⏸ Paused audio") << std::endl;
@@ -547,6 +548,7 @@ struct adm_player {
     // Select audio file via keys '1'..'9' (1 selects first file)
     char c = k.key();
     if (c >= '1' && c <= '9') {
+      playing = false; // Pause playback when changing files
       int idx = static_cast<int>(c - '1'); // '1'->0, '2'->1, ...
       if (idx < static_cast<int>(audioFiles.size())) {
         if (idx != selectedFileIndex) {
