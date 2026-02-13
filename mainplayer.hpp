@@ -15,13 +15,13 @@ Includes real-time dB meters for all 54 channels.
 #include "al/app/al_App.hpp"
 #include "al/io/al_File.hpp"
 #include "al/io/al_Imgui.hpp"
-#include "al/sound/al_SoundFile.hpp"
+#include "Gamma/SoundFile.h"
 #include "channelMapping.hpp"
 
 using namespace al;
 
 struct adm_player {
-  SoundFile soundFile;
+  gam::SoundFile soundFile;
   uint64_t frameCounter = 0;
   std::vector<float> buffer;
 
@@ -29,6 +29,11 @@ struct adm_player {
   bool playing = false;
   bool loop = true;
   float gain = 0.5f;
+  bool streamingMode = true;  // Enable streaming for large files
+  uint64_t chunkSize = 60 * 48000;  // 1 minute chunks at 48kHz
+  std::vector<float> audioData;  // Chunked audio data
+  uint64_t currentChunkStart = 0;
+  uint64_t currentChunkFrames = 0;
 
   // Audio file info
   int numChannels = 56; //default 
@@ -60,7 +65,6 @@ struct adm_player {
   void setSourceAudioFolder(const std::string& folder) {
     audioFolder = folder;
   }
-  // Scan sourceAudio folder for .wav files
   void scanAudioFiles() {
     audioFiles.clear();
     std::string audioDir = al::File::currentPath() + audioFolder;
@@ -98,18 +102,33 @@ struct adm_player {
     bool wasPlaying = playing;
     playing = false;
 
-    if (!soundFile.open(audioPath.c_str())) {
+    if (!soundFile.openRead(audioPath)) {
       std::cerr << "✗ ERROR: Could not open file: " << audioPath << std::endl;
       return false;
     }
 
     std::cout << "✓ Audio file loaded successfully" << std::endl;
-    std::cout << "  Sample rate: " << soundFile.sampleRate << " Hz" << std::endl;
-    std::cout << "  Channels: " << soundFile.channels << std::endl;
-    std::cout << "  Frame count: " << soundFile.frameCount << std::endl;
-    std::cout << "  Duration: " << (double)soundFile.frameCount / soundFile.sampleRate << " seconds" << std::endl;
+    std::cout << "  Sample rate: " << soundFile.frameRate() << " Hz" << std::endl;
+    std::cout << "  Channels: " << soundFile.channels() << std::endl;
+    std::cout << "  Frame count: " << soundFile.frames() << std::endl;
+    std::cout << "  Duration: " << (double)soundFile.frames() / soundFile.frameRate() << " seconds" << std::endl;
 
-    numChannels = soundFile.channels;
+    // For streaming mode, we don't preload data - Gamma SoundFile doesn't load data by default
+    if (streamingMode) {
+      std::cout << "  Streaming mode enabled - data not loaded into memory" << std::endl;
+    }
+    // note: we don't store a single filename string; selection is tracked by audioFiles[selectedFileIndex]
+
+    if (numChannels != expectedChannels) {
+      std::cerr << "⚠ WARNING: Expected " << expectedChannels << " channels but file has "
+                << numChannels << " channels." << std::endl;
+    }
+
+    // For streaming mode, load first chunk
+    if (streamingMode) {
+      loadAudioChunk(0);
+      std::cout << "  Streaming mode enabled - loaded first chunk" << std::endl;
+    }
     // note: we don't store a single filename string; selection is tracked by audioFiles[selectedFileIndex]
 
     if (numChannels != expectedChannels) {
@@ -133,9 +152,41 @@ struct adm_player {
     return true;
   }
 
+  void loadAudioChunk(uint64_t chunkStartFrame) {
+    if (!streamingMode) return;
+
+    // Calculate chunk size in frames (1 minute chunks)
+    uint64_t chunkFrames = chunkSize;
+
+    // Ensure we don't read beyond file end
+    if (chunkStartFrame + chunkFrames > soundFile.frames()) {
+      chunkFrames = soundFile.frames() - chunkStartFrame;
+    }
+
+    // Resize audioData to hold the chunk
+    audioData.resize(chunkFrames * numChannels);
+
+    // Seek to the correct position in the file
+    soundFile.seek(chunkStartFrame, SEEK_SET);
+
+    // Read the chunk data
+    soundFile.read(&audioData[0], chunkFrames);
+
+    // Update current chunk info
+    currentChunkStart = chunkStartFrame;
+    currentChunkFrames = chunkFrames;
+
+    std::cout << "Loaded chunk: frames " << chunkStartFrame << " to " << (chunkStartFrame + chunkFrames - 1)
+              << " (" << chunkFrames << " frames)" << std::endl;
+  }
+
   void onInit()  {
     std::cout << "\n=== 54-Channel Audio Player ===" << std::endl;
     std::cout << "Current path: " << al::File::currentPath() << std::endl;
+
+    // Enable streaming mode for large files
+    streamingMode = true; // should make this dynamically set able 
+    std::cout << "Streaming mode: ENABLED (for large file support)" << std::endl;
 
     // populate audioFiles from folder and pick selectedFileIndex
     scanAudioFiles();
@@ -214,15 +265,15 @@ struct adm_player {
     ImGui::Text("File Info:");
     ImGui::Text("  File Channels: %d", numChannels);
     ImGui::Text("  Output Channels: %d", expectedChannels);
-    ImGui::Text("  Sample Rate: %d Hz", soundFile.sampleRate);
-    ImGui::Text("  Duration: %.2f seconds", (double)soundFile.frameCount / soundFile.sampleRate);
+    ImGui::Text("  Sample Rate: %d Hz", (int)soundFile.frameRate());
+    ImGui::Text("  Duration: %.2f seconds", (double)soundFile.frames() / soundFile.frameRate());
 
     ImGui::Separator();
     ImGui::Text("Playback:");
-    ImGui::Text("  Current Frame: %llu / %llu", frameCounter, soundFile.frameCount);
+    ImGui::Text("  Current Frame: %llu / %llu", frameCounter, (uint64_t)soundFile.frames());
     ImGui::Text("  Current Time: %.2f / %.2f seconds",
-                (double)frameCounter / soundFile.sampleRate,
-                (double)soundFile.frameCount / soundFile.sampleRate);
+                (double)frameCounter / soundFile.frameRate(),
+                (double)soundFile.frames() / soundFile.frameRate());
 
     ImGui::Separator();
     ImGui::Text("Controls:");
@@ -244,6 +295,14 @@ struct adm_player {
 
     if (ImGui::Checkbox("Loop", &loop)) {
       std::cout << "Loop: " << (loop ? "ON" : "OFF") << std::endl;
+    }
+
+    if (ImGui::Checkbox("Streaming Mode", &streamingMode)) {
+      std::cout << "Streaming Mode: " << (streamingMode ? "ON" : "OFF") << std::endl;
+      // Note: Changing streaming mode requires reloading the file
+      if (soundFile.opened()) {
+        std::cout << "⚠ Note: Restart required for streaming mode change" << std::endl;
+      }
     }
 
     if (ImGui::SliderFloat("Gain", &gain, 0.0f, 1.0f)) {
@@ -329,7 +388,8 @@ struct adm_player {
   }
 
   void onSound(AudioIOData& io) {
-    if (!soundFile.data.size()) {
+    // Check if we have a valid file loaded (Gamma SoundFile doesn't have data member)
+    if (!soundFile.opened()) {
       // No file loaded, output silence
       while (io()) {
         for (int ch = 0; ch < io.channelsOut(); ch++) {
@@ -357,7 +417,7 @@ struct adm_player {
     }
 
     // Check if we're at the end
-    if (frameCounter >= soundFile.frameCount) {
+    if (frameCounter >= soundFile.frames()) {
       if (loop) {
         frameCounter = 0;
       } else {
@@ -372,12 +432,29 @@ struct adm_player {
     }
 
     // Adjust numFrames if we're near the end
-    if (frameCounter + numFrames > soundFile.frameCount) {
-      numFrames = soundFile.frameCount - frameCounter;
+    if (frameCounter + numFrames > soundFile.frames()) {
+      numFrames = soundFile.frames() - frameCounter;
     }
 
-    // Get pointer to current frame in the soundfile
-    float* frames = soundFile.getFrame(frameCounter);
+    // Check if we need to load a new chunk
+    if (streamingMode) {
+      uint64_t requiredChunkStart = (frameCounter / chunkSize) * chunkSize;
+      if (requiredChunkStart != currentChunkStart) {
+        loadAudioChunk(requiredChunkStart);
+      }
+    }
+
+    // Get pointer to current frame
+    float* frames;
+    if (streamingMode) {
+      uint64_t localFrame = frameCounter - currentChunkStart;
+      frames = &audioData[localFrame * numChannels];
+    } else {
+      // For non-streaming, read directly from file
+      soundFile.seek(frameCounter, SEEK_SET);
+      soundFile.read(buffer.data(), numFrames);
+      frames = buffer.data();
+    }
 
     // Copy interleaved data to buffer
     for (uint64_t i = 0; i < numFrames * numChannels; i++) {
